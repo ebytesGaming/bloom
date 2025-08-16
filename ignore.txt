@@ -1,0 +1,378 @@
+const { 
+    Client, 
+    GatewayIntentBits, 
+    EmbedBuilder, 
+    Collection, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle,
+    StringSelectMenuBuilder
+} = require('discord.js');
+const fs = require('fs');
+const fetch = require('node-fetch');
+require('dotenv').config();
+
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent
+    ] 
+});
+
+client.commands = new Collection();
+
+// Load handlers
+const functions = fs.readdirSync("./src/functions").filter(file => file.endsWith(".js"));
+const eventFiles = fs.readdirSync("./src/events").filter(file => file.endsWith(".js"));
+const commandFolders = fs.readdirSync("./src/commands");
+
+let statusMessageId = null;
+const TARGET_CHANNEL_ID = '1404678685964898404';
+
+// Your existing editS() function here...
+async function editS() {
+    try {
+        const res = await fetch("https://api.policeroleplay.community/v1/server", {
+            headers: { "Server-Key": process.env.serverToken }
+        });
+        const response = await res.json();
+
+        const pcc = response.CurrentPlayers || 0;
+        const currentTime = Math.floor(Date.now() / 1000);
+
+        // Build embed
+        const banner = new EmbedBuilder()
+            .setImage('https://media.discordapp.net/attachments/1402865432624500736/1404937243109494894/sessions_nyrp.png?ex=689d0145&is=689bafc5&hm=3d9ac406ccd4feb48ff2a91eb5e9be949ac2c617ce1f57ecbcf23f67a116d4e4&=&format=webp&quality=lossless&width=2436&height=832')
+            .setColor('#494949');
+
+        const text = new EmbedBuilder()
+            .setImage('https://media.discordapp.net/attachments/955550139865526273/1364983208382566533/banner.png?ex=689cac2d&is=689b5aad&hm=0f707d18782dbbba198b57aa8427323851077d37dcefd7faf96f49fa1ae23861&=&format=webp&quality=lossless&width=2706&height=132')
+            .setDescription('Our sessions are hosted at all different times depending on when our session hosters are available. See the live server status below: player count, queue, and staff online and more!')
+            .setColor('#494949');
+            
+        const embed = new EmbedBuilder()
+            .setImage('https://media.discordapp.net/attachments/1402865432624500736/1404935742672736256/image.png?ex=689cffdf&is=689bae5f&hm=bd88048eab1d2c055e5cfd409d1dcda9954fe0f88133535342be4c76ce4224c2&=&format=webp&quality=lossless&width=2844&height=150')
+            .addFields(
+                { name: 'Player Count', value: pcc.toString(), inline: true },
+                { name: 'Staff Online', value: '0', inline: true },
+                { name: 'Queue', value: '0', inline: true },
+                { name: 'Last Updated', value: `<t:${currentTime}:R>` }
+            )
+            .setColor('#494949');
+
+        // Build status button
+        const statusButton = new ButtonBuilder()
+            .setCustomId('server_status')
+            .setLabel(pcc > 0 ? 'Server Online' : 'Server Offline')
+            .setStyle(pcc > 0 ? ButtonStyle.Success : ButtonStyle.Danger)
+            .setDisabled(true);
+
+        const roles = new ButtonBuilder()
+            .setCustomId('roles')
+            .setLabel('Session Role')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(false);
+
+        const row = new ActionRowBuilder().addComponents(roles, statusButton);
+
+        // Send or edit the message
+        const channel = client.channels.cache.get(TARGET_CHANNEL_ID);
+        if (!channel) return console.error("Target channel not found!");
+
+        if (!statusMessageId) {
+            const sent = await channel.send({ embeds: [banner, text, embed], components: [row] });
+            statusMessageId = sent.id;
+        } else {
+            try {
+                const msg = await channel.messages.fetch(statusMessageId);
+                await msg.edit({ embeds: [banner, text, embed], components: [row] });
+            } catch (err) {
+                console.error("Error editing message:", err);
+                const sent = await channel.send({ embeds: [banner, text, embed], components: [row] });
+                statusMessageId = sent.id;
+            }
+        }
+    } catch (err) {
+        console.error("Error fetching or sending server data:", err);
+    }
+}
+
+// New function: Send ticket embed + dropdown menu
+async function sendTicketMessage() {
+    const TICKET_CHANNEL_ID = '1404676907936780389'; // <-- Replace with your desired channel ID
+    const channel = client.channels.cache.get(TICKET_CHANNEL_ID);
+    if (!channel) {
+        return console.error("Ticket channel not found!");
+    }
+    const ticketBanner = new EmbedBuilder()
+        .setImage('https://media.discordapp.net/attachments/1402865432624500736/1404937244132773888/assistance_nyrp.png?ex=689d0145&is=689bafc5&hm=b62c76b21eb872540ea775ed6f9f6dfc08b1906d2bb406d074667d5721d098e6&=&format=webp&quality=lossless&width=2444&height=836')
+        .setColor('#494949');
+
+    const ticketEmbed = new EmbedBuilder()
+        .setTitle('New York State Roleplay Assistance')
+        .setDescription('Welcome to the New York State Roleplay support system! If you need assistance, please select a category below. Our support team is here to help you with any questions or concerns you may have. Please choose the appropriate category for your issue.')
+        .setColor('#494949')
+        .addFields(
+            { name: 'General', value: 'Questions\nConcerns',inline: true },
+            { name: 'Management', value: 'Reporting Members\nReporting Staff', inline: true },
+            { name: 'Community', value: 'Paid advertisement\nDonations\nClaims', inline: true }
+        )
+        .setImage('https://media.discordapp.net/attachments/1402865432624500736/1404937244409729195/footer_nyrp.png?ex=689d0145&is=689bafc5&hm=0c4c505aedab546b559fa70e3bbebf45b53e9978733f34a51a1fb512f47b1749&=&format=webp&quality=lossless&width=2636&height=136');
+
+
+    const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+        .setCustomId('faq')
+        .setLabel('FAQ')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true)
+);
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('ticket_select')
+                .setPlaceholder('Open a ticket...')
+                .addOptions([
+                    {
+                        label: 'General',
+                        description: 'Open a general support ticket',
+                        value: 'general',
+                    },
+                    {
+                        label: 'Management',
+                        description: 'Open a management ticket',
+                        value: 'management',
+                    },
+                    {
+                        label: 'Community',
+                        description: 'Open a community ticket',
+                        value: 'community',
+                    },
+                ]),
+        );
+
+
+    await channel.send({ embeds: [ticketBanner, ticketEmbed], components: [row, row2] });
+}
+
+// New function: Send verify embed + button to verify channel
+async function sendVerifyMessage() {
+    const VERIFY_CHANNEL_ID = '1404716822900772885';
+    const channel = client.channels.cache.get(VERIFY_CHANNEL_ID);
+    if (!channel) {
+        return console.error("Verify channel not found!");
+    }
+    const verifyEmbed = new EmbedBuilder()
+        .setTitle('Verify Your Roblox Account')
+        .setDescription('Welcome to **New York State Roleplay**! To view the rest of the channels you are required to verify! ')
+        .setImage('https://media.discordapp.net/attachments/1402865432624500736/1404937244753530972/next_legend_nyrp_footer.png?ex=689d0145&is=689bafc5&hm=22e880d90d3b1ad69fdeacfc94b241243adf806e383271908c01d50f2787ffd4&=&format=webp&quality=lossless&width=2636&height=140')
+        .setColor('#494949');
+
+    const bannerembed = new EmbedBuilder()
+        .setImage('https://media.discordapp.net/attachments/1402865432624500736/1404937243482914856/selfroles_nyrp.png?ex=689d0145&is=689bafc5&hm=01d513a82eb731e07ae9abfd2007480ee1e223a38df7936a4e0e28864dfb4eb0&=&format=webp&quality=lossless&width=2434&height=828')
+        
+    const verifyButton = new ButtonBuilder()
+        .setCustomId('bloxlink_verify')
+        .setLabel('Verify Now')
+        .setStyle(ButtonStyle.Success);
+
+    const unableToVerifyLinkButton = new ButtonBuilder()
+    .setLabel('Unable to Verify?')
+    .setStyle(ButtonStyle.Link)
+    .setURL('https://blox.link/verify');
+
+
+    const row = new ActionRowBuilder().addComponents(verifyButton, unableToVerifyLinkButton);
+
+    await channel.send({ embeds: [bannerembed, verifyEmbed], components: [row] });
+}
+
+// Startup
+(async () => {
+    for (const file of functions) {
+        require(`./functions/${file}`)(client);
+    }
+    client.handleEvents(eventFiles, "./src/events");
+    client.handleCommands(commandFolders, "./src/commands");
+    client.login(process.env.token);
+})();
+
+// Run updater when bot is ready
+client.once('ready', () => {
+    console.log(`Logged in as ${client.user.tag}`);
+    editS();
+    setInterval(editS, 30000);
+    sendTicketMessage(); // send the ticket message on startup
+    sendVerifyMessage(); // send the verify message on startup
+});
+
+// Interaction handler for commands, selects, and buttons
+client.on('interactionCreate', async (interaction) => {
+  if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+    try {
+      await command.execute(interaction);
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: 'There was an error executing that command.', ephemeral: true });
+    }
+  } else if (interaction.isStringSelectMenu() && interaction.customId === 'ticket_select') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const category = interaction.values[0];
+    const guild = interaction.guild;
+    const member = interaction.member;
+
+    const channelName = `${category}-${member.user.username.toLowerCase()}`.replace(/[^a-z0-9-]/g, '');
+
+    const parentCategories = {
+      general: '1335663347491799092',
+      management: '1350866126271287487',
+      community: '1350865999959953438',
+    };
+    const parentId = parentCategories[category];
+
+    const existingChannel = guild.channels.cache.find(c => c.name === channelName);
+    if (existingChannel) {
+      return interaction.editReply({ content: 'You already have an open ticket in this category!' });
+    }
+
+    try {
+      const channel = await guild.channels.create({
+        name: channelName,
+        type: 0, // GUILD_TEXT
+        parent: parentId,
+        permissionOverwrites: [
+          { id: guild.roles.everyone.id, deny: ['ViewChannel'] },
+          { id: member.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] },
+        ],
+      });
+
+      // Fetch Bloxlink data
+      let robloxData = null;
+      try {
+        const response = await fetch(`https://api.blox.link/v1/user/${member.id}`, {
+          headers: { 'API-Key': process.env.BLOXLINK_API_KEY },
+        });
+        if (response.ok) {
+          const json = await response.json();
+          if (json.success && json.user) robloxData = json.user;
+        }
+      } catch {
+        // silent fail
+      }
+
+      const robloxUsername = robloxData ? robloxData.username : 'No linked Roblox account';
+
+      const robloxId = robloxData ? robloxData.id : null;
+
+const fields = [
+  { name: 'Discord Username', value: `${member.user.tag}`, inline: true },
+  { name: 'Discord ID', value: `\`${member.id}\``, inline: true },
+  { name: '\u200B', value: '\u200B', inline: true }, // empty field for spacing
+  {
+    name: 'Roblox Username',
+    value: robloxData
+      ? `[${robloxData.username}](https://www.roblox.com/users/${robloxData.id}/profile)`
+      : 'No linked Roblox account',
+    inline: true
+  },
+  {
+    name: 'Roblox ID',
+    value: robloxData ? `${robloxData.id}` : 'N/A',
+    inline: true
+  }
+];
+
+const ticketEmbed = new EmbedBuilder()
+  .addFields(fields)
+  .setColor('#494949')
+  .setImage('https://media.discordapp.net/attachments/1402865432624500736/1404935742672736256/image.png?ex=689cffdf&is=689bae5f&hm=bd88048eab1d2c055e5cfd409d1dcda9954fe0f88133535342be4c76ce4224c2&=&format=webp&quality=lossless&width=2844&height=150');
+
+const textembed = new EmbedBuilder()
+.setTitle('New York State Roleplay Assistance')
+.setDescription('Thank you for reaching out to us! A member of our support team will be with you shortly.')
+.setImage('https://media.discordapp.net/attachments/955550139865526273/1364983208382566533/banner.png?ex=689cac2d&is=689b5aad&hm=0f707d18782dbbba198b57aa8427323851077d37dcefd7faf96f49fa1ae23861&=&format=webp&quality=lossless&width=2706&height=132')
+.setColor('#494949');
+
+const Banner1 = new EmbedBuilder()
+  .setImage('https://media.discordapp.net/attachments/1402865432624500736/1404937244132773888/assistance_nyrp.png?ex=689d0145&is=689bafc5&hm=b62c76b21eb872540ea775ed6f9f6dfc08b1906d2bb406d074667d5721d098e6&=&format=webp&quality=lossless&width=2444&height=836')
+  .setColor('#494949');
+
+const ticketControlRow = new ActionRowBuilder().addComponents(
+  new ButtonBuilder()
+    .setCustomId('claim_ticket')
+    .setLabel('Claim')
+    .setStyle(ButtonStyle.Success),
+
+  new ButtonBuilder()
+    .setCustomId('close_ticket')
+    .setLabel('Close')
+    .setStyle(ButtonStyle.Danger),
+
+  new ButtonBuilder()
+    .setCustomId('close_reason_ticket')
+    .setLabel('Close with Reason')
+    .setStyle(ButtonStyle.Danger),
+);
+
+await channel.send({ embeds: [Banner1, textembed, ticketEmbed], components: [ticketControlRow] });
+
+      await interaction.editReply({ content: `<a:loading:1404902683650953337> Your ticket has been created: ${channel}` });
+    } catch (err) {
+      console.error(err);
+      await interaction.editReply({ content: 'There was an error creating your ticket.' });
+    }
+  } else if (interaction.isButton() && interaction.customId === 'bloxlink_verify') {
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      const userId = interaction.user.id;
+      const guildId = '1335464449095499826'; // your guild ID
+
+      const postResponse = await fetch(`https://api.blox.link/v4/public/guilds/1335464449095499826/update-user/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': process.env.BLOXLINK_API_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!postResponse.ok) {
+        const text = await postResponse.text();
+        return interaction.editReply(`❌ Failed to update verification: ${text}`);
+      }
+
+      const userResponse = await fetch(`https://api.blox.link/v1/user/${userId}`);
+      if (!userResponse.ok) {
+        return interaction.editReply('❌ Could not fetch your Roblox info after verification.');
+      }
+
+      const userData = await userResponse.json();
+      if (!userData.success || !userData.user) {
+        return interaction.editReply('❌ No linked Roblox account found.');
+      }
+
+      const robloxUsername = userData.user.username;
+      const robloxId = userData.user.id;
+
+      const embed = new EmbedBuilder()
+        .setTitle('Verification Successful!')
+        .setDescription(`Your Roblox account **${robloxUsername}** has been linked successfully.`)
+        .addFields(
+          { name: 'Roblox Username', value: `[${robloxUsername}](https://www.roblox.com/users/${robloxId}/profile)`, inline: true },
+          { name: 'Roblox ID', value: robloxId.toString(), inline: true },
+        )
+        .setColor('#00FF00')
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error(error);
+      await interaction.editReply('❌ An error occurred during verification. Please try again later.');
+    }
+  }
+});
